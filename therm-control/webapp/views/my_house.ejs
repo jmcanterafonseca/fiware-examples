@@ -3,43 +3,9 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="30">
     <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
     <script
       src="https://www.google.com/jsapi?autoload={'modules':[{'name':'visualization','version':'1','packages':['gauge']}]}"></script>
-
-    <script>
-      google.load('visualization', '1', {packages: ['gauge']});
-      google.setOnLoadCallback(drawGauge);
-
-      var gaugeOptions = {
-        min: 0, max: 40, yellowFrom: 25, yellowTo: 35,
-        redFrom: 35, redTo: 40, minorTicks: 0.1,
-        yellowColor: 'yellow'
-      };
-      var gauge;
-
-      function drawGauge() {
-        gaugeData = new google.visualization.DataTable();
-        gaugeData.addColumn('number', 'Current');
-        gaugeData.addColumn('number', 'Desired');
-        gaugeData.addRows(2);
-        gaugeData.setCell(0, 0, <%= currentTemp.value %>);
-        gaugeData.setCell(0, 1, 22);
-
-        gauge = new google.visualization.Gauge(document.getElementById('gauge_div'));
-        gauge.draw(gaugeData, gaugeOptions);
-
-        console.log('Timestamp: ');
-      }
-
-      function setTempChanged() {
-        var newVal = document.getElementById('new-temp').value;
-        gaugeData.setValue(0, 1, newVal);
-        gauge.draw(gaugeData, gaugeOptions);
-      }
-    </script>
-
     <style>
       time {
         color: red;
@@ -49,14 +15,29 @@
         width:280px;
         height: 140px;
       }
+
+      span.customerId {
+        color: red;
+      }
     </style>
+    <link rel="stylesheet" href="bower_components/switchery/dist/switchery.css">
+    <script src="bower_components/switchery/dist/switchery.js"></script>
   </head>
 
   <body>
-    <div id="gauge_div"></div>
-    <input id="new-temp" type="range" max="40" min="0" step="1" value="22" onchange="setTempChanged()">
+    <h1 id="customer-data">Customer: <span class="customerId"></span></h1>
+    <% if (currentTemp.value !== Number.NEGATIVE_INFINITY) { %>
+      <div id="gauge_div"></div>
+      <input id="new-temp" type="range" max="40" min="0" step="1" value="22">
 
-    <p>Last Updated: <time><%= currentTemp.metadata.timestamp.toLocaleString('es-ES') %></time></p>
+      <p>Last Updated: <time><%= currentTemp.metadata && currentTemp.metadata.timestamp.toLocaleString('es-ES') %></time></p>
+
+      <label>Boiler Status:<input type="checkbox" class="js-switch"></label>
+    <% } %>
+
+    <script src="js/therm_control.js"></script>
+    <script>
+      ThermController.init(<%= currentTemp.value %>, <%= desiredTemp %>, '<%= boilerStatus %>');
+    </script>
   </body>
-
 </html>

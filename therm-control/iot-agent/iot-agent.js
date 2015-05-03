@@ -7,6 +7,8 @@ var Orion = require('fiware-orion-client');
 var OrionClient = new Orion.Client({
   url: 'http://130.206.83.68:1026/v1'
 });
+var OrionHelper = Orion.NgsiHelper;
+var XmlBuilder = Orion.XmlBuilder;
 
 var loggerStream = fs.createWriteStream('./log.txt', {
   flags: 'a',
@@ -24,7 +26,16 @@ app.use(morgan('dev',{
   stream: loggerStream
 }));
 
-app.use(bodyParser.json());
+app.use(bodyParser.text({
+  type: 'application/xml'
+}));
+
+app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
+  extended: true
+}));
+
+var expressWs = require('express-ws')(app);
+
 
 var sensorDesc = {
   '28-0000056a1cc2' : {
@@ -34,11 +45,31 @@ var sensorDesc = {
   }
 };
 
-app.post('/measure', function(req, resp) {
-  console.log('Post is here!', req.body.sensorId);
+var customerConfig = {
+  'Customer-6790' : {
+    sensors: [
+      {
+        'temperature': [
+          {
+           '28-0000056a1cc2' : {
+              model: 'DS18B20+'
+           }
+          }
+        ]
+      }
+    ],
+    actuators: {
+      'boiler': {
+        id: 'r123456'
+      }
+    },
+    connection: null
+  }
+};
 
-  var sensorId = req.body.sensorId;
-  var data = req.body.data;
+function updateContext(msg) {
+  var sensorId = msg.sensorId;
+  var data = msg.data;
 
   var dataComps = data.split('=');
   var magnitude = dataComps[0];
@@ -55,7 +86,13 @@ app.post('/measure', function(req, resp) {
     timestamp: new Date()
   });
 
-  OrionClient.updateContext(contextData).then(function(result) {
+  return OrionClient.updateContext(contextData);
+}
+
+app.post('/measure', function(req, resp) {
+  console.log('Post is here!', req.body.sensorId);
+
+  updateContext(req.body).then(function(result) {
     console.log('Context data updated!!!');
   }).catch(function(err) {
       console.error('Error while updating context: ', err);
@@ -64,6 +101,122 @@ app.post('/measure', function(req, resp) {
   resp.sendStatus(200);
 });
 
+// Context Provider entry point
+app.post('/ngsi10/boiler/:operation', function(req, resp) {
+  var operation = req.params.operation;
 
-app.listen(9001);
-console.log('IOT Agent up and running');
+  if (operation === 'updateContext') {
+    console.log('Update Context!!!: ', req.body);
+
+    var data = OrionHelper.parse(req.body);
+    var customerId = data.id;
+    var newStatus = data.boilerStatus;
+
+    var response = new XmlBuilder('updateContextResponse');
+    var responseData = data;
+    if (newStatus) {
+      var boilerId = customerConfig[customerId].actuators.boiler.id;
+      var connection = customerConfig[customerId].connection;
+
+      connection.send(JSON.stringify({
+        type: 'command',
+        command: 'setStatus',
+        actuatorId: boilerId,
+        data: newStatus
+      }));
+    }
+    else {
+      console.warn('New status not found. Doing nothing');
+    }
+
+    response.child(OrionHelper.buildNgsiResponse(responseData).toXMLTree());
+    var payload = response.build(true);
+    resp.send(payload);
+  }
+  else if (operation === 'queryContext') {
+    console.log(req.body);
+    var ngsiRequest = OrionHelper.parseNgsiRequest(req.body);
+    var customerId = ngsiRequest.entities[0].id;
+    console.log('Query Customer Id: ', customerId);
+
+    var connection = customerConfig[customerId].connection;
+
+    var msgCallback = function(msg) {
+      var msgData = JSON.parse(msg);
+
+      if (msgData.type === 'commandResponse') {
+        var responseData = {
+          type: 'House',
+          id: customerId,
+          boilerStatus: msgData.data
+        };
+
+        var response = new XmlBuilder('queryContextResponse');
+        response.child(OrionHelper.buildNgsiResponse(responseData).toXMLTree());
+        var payload = response.build(true);
+
+        resp.send(payload);
+      }
+
+      connection.removeListener('message', msgCallback);
+    };
+
+    if (connection) {
+      connection.on('message', msgCallback);
+
+      var boilerId = customerConfig[customerId].actuators.boiler.id;
+
+      connection.send(JSON.stringify({
+        type: 'command',
+        command: 'getStatus',
+        actuatorId: boilerId
+      }));
+    }
+    else {
+      console.log('WS Connection not available');
+      resp.sendStatus(500);
+    }
+  }
+});
+
+
+app.ws('/ws_measure', function(ws, req) {
+  console.log('Measure!');
+
+  ws.on('message', function(msg) {
+    console.log('Msg: ', msg);
+    var dataMsg = JSON.parse(msg);
+
+    if (dataMsg.type === 'observation') {
+      var customerId = sensorDesc[dataMsg.sensorId].id;
+      console.log(customerId);
+      customerConfig[customerId].connection = ws;
+
+      updateContext(dataMsg).then(function() {
+        console.log('Context data updated!!!');
+      }).catch(function(err) {
+        console.error('Error while updating context: ', err);
+      });
+    }
+  });
+});
+
+function registerProvider() {
+  var reg = {
+    type: 'House',
+    id: 'Customer-6790',
+    attributes: ['boilerStatus']
+  };
+
+  return OrionClient.registerContext(reg, {
+    callback: 'http://130.206.83.68:9003/ngsi10/boiler'
+  });
+}
+
+registerProvider().then(function() {
+  console.log('Context provider properly registered');
+  console.log('IOT Agent up and running');
+  app.listen(9003);
+}).catch(function(err) {
+    console.error('Error while calling register context: ', err);
+});
