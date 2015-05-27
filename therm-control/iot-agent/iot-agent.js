@@ -201,22 +201,68 @@ app.ws('/ws_measure', function(ws, req) {
   });
 });
 
-function registerProvider() {
-  var reg = {
-    type: 'House',
-    id: 'Customer-6790',
-    attributes: ['boilerStatus']
-  };
+function registerProvider(forceCreate) {
+  return new Promise(function (resolve, reject) {
+    var FILE_REGISTRATION = 'registration.id';
+    var registrationId;
+    try {
+      registrationId = fs.readFileSync(__dirname + '/' + FILE_REGISTRATION,
+                                       'UTF-8');
+    }
+    catch(e) {
+      console.log('Registration id not present');
+    }
 
-  return OrionClient.registerContext(reg, {
-    callback: 'http://130.206.83.68:9003/ngsi10/boiler'
+    var registration = {
+      type: 'House',
+      id: 'Customer-6790',
+      attributes: ['boilerStatus']
+    };
+
+    var options = {
+      callback: 'http://130.206.83.68:9003/ngsi10/boiler'
+    };
+
+    if (registrationId && !forceCreate) {
+      console.log('Using existing registration id: ', registrationId);
+      options.registrationId = registrationId;
+    }
+
+    OrionClient.registerContext(registration,
+                                              options).then(function(data) {
+      if (!data) {
+        reject({
+          code: 404
+        });
+        return;
+      }
+
+      fs.writeFileSync(__dirname + '/' + FILE_REGISTRATION,
+                       data.registrationId);
+      resolve(data.registrationId);
+
+    }).catch(function(err) {
+      reject(err);
+    });
   });
 }
 
-registerProvider().then(function() {
-  console.log('Context provider properly registered');
+function onRegistered(registrationId) {
+  console.log('Context provider properly registered: ', registrationId);
   console.log('IOT Agent up and running');
   app.listen(9003);
-}).catch(function(err) {
-    console.error('Error while calling register context: ', err);
-});
+}
+
+function onRegisteredError(err) {
+  if (err && err.code == 404) {
+    console.warn('Cannot update existing subscription');
+    registerProvider(true).then(onRegistered);
+    return;
+  }
+  console.error('Cannot subscribe to context changes: ', err);
+}
+
+registerProvider().then(onRegistered).
+            catch(onRegisteredError).catch(onRegisteredError);
+
+

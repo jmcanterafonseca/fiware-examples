@@ -1,0 +1,16 @@
+time {
+  color: red;
+}
+
+#gauge_div {
+  width:280px;
+  height: 140px;
+}
+
+span.customerId {
+  color: red;
+}
+
+input[type="range"] {
+  margin-left: 145px;
+}

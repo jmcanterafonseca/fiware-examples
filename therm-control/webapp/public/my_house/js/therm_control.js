@@ -54,20 +54,12 @@ var ThermController = (function() {
     google.load('visualization', '1', { packages: ['gauge'] });
     google.setOnLoadCallback(drawGauge.bind(null, currentTemp, desiredTemp));
 
-    document.getElementById('new-temp').addEventListener('change',
+    document.getElementById('new-temp').addEventListener('input',
                                                          setTempChanged);
 
-    var elem = document.querySelector('.js-switch');
-    elem.value = boilerStatus;
-    elem.checked = (boilerStatus === 'ON');
+    setBoilerStatus(boilerStatus);
 
-    var boilerSwitch = new Switchery(elem, {
-      color: 'red',
-      jackColor: '#fcf45e',
-      jackSecondaryColor: '#c8ff77'
-    });
-
-    elem.addEventListener('click', function() {
+    document.querySelector('.ios-switch').addEventListener('click', function() {
       Request({
         method: 'POST',
         url: '/my_house/' + customerId + '/toggle_boiler'
@@ -85,6 +77,12 @@ var ThermController = (function() {
     registerWs();
   }
 
+  function setBoilerStatus(boilerStatus) {
+    var elem = document.querySelector('.ios-switch');
+    elem.value = boilerStatus;
+    elem.checked = (boilerStatus === 'ON');
+  }
+
   function onChange(e) {
     var data = JSON.parse(e.data);
 
@@ -92,6 +90,11 @@ var ThermController = (function() {
       console.log('New temperature: ', data.newTemperature);
 
       refreshTemperature(data.newTemperature);
+    }
+
+    if (data.newBoilerStatus) {
+      console.log('New boiler status: ', data.newBoilerStatus);
+      setBoilerStatus(data.newBoilerStatus);
     }
   }
 

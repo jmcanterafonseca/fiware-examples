@@ -6,33 +6,23 @@
     <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
     <script
       src="https://www.google.com/jsapi?autoload={'modules':[{'name':'visualization','version':'1','packages':['gauge']}]}"></script>
-    <style>
-      time {
-        color: red;
-      }
-
-      #gauge_div {
-        width:280px;
-        height: 140px;
-      }
-
-      span.customerId {
-        color: red;
-      }
-    </style>
-    <link rel="stylesheet" href="bower_components/switchery/dist/switchery.css">
-    <script src="bower_components/switchery/dist/switchery.js"></script>
+    <link rel="stylesheet" href="style/switch.css">
+    <link rel="stylesheet" href="style/my_house.css">
   </head>
 
   <body>
     <h1 id="customer-data">Customer: <span class="customerId"></span></h1>
     <% if (currentTemp.value !== Number.NEGATIVE_INFINITY) { %>
       <div id="gauge_div"></div>
-      <input id="new-temp" type="range" max="40" min="0" step="1" value="22">
+      <input id="new-temp" type="range" max="40" min="0" step="0.5">
 
       <p>Last Updated: <time><%= currentTemp.metadata && currentTemp.metadata.timestamp.toLocaleString('es-ES') %></time></p>
 
-      <label>Boiler Status:<input type="checkbox" class="js-switch"></label>
+      <label>
+        <input type="checkbox" class="ios-switch">
+          Boiler Status:
+          <div class="switch"></div>
+      </label>
     <% } %>
 
     <script src="js/therm_control.js"></script>

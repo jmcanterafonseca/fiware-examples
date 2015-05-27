@@ -46,10 +46,12 @@ var expressWs = require('express-ws')(app);
 var wsConnections = Object.create(null);
 
 app.get('/my_house/:customerId', function(req, resp) {
+  console.log('Request has come to my_house');
   OrionClient.queryContext({
     id: 'Customer' + '-' + req.params.customerId,
     type: 'House'
   }).then(function(data) {
+    console.log('Data from the context broker');
     if (!data) {
       console.warn('No data found!!!');
       data = Object.create(null);
@@ -109,15 +111,17 @@ app.post('/my_house/:customerId/toggle_boiler', function(req, resp) {
 });
 
 function sendNotification(customerId, data) {
-  var connection = wsConnections[customerId];
-  if (connection) {
-    try {
-      connection.send(JSON.stringify(data));
-    }
-    catch(e) {
-      console.warn('Not connected. Cannot notify');
-      wsConnections[customerId] = null;
-    }
+  var connections = wsConnections[customerId];
+  if (Array.isArray(connections)) {
+    connections.forEach(function(aConnection, index) {
+      try {
+        aConnection.send(JSON.stringify(data));
+      }
+      catch(e) {
+        console.warn('Not connected. Cannot notify');
+        connections.splice(index, 1);
+      }
+    });
   }
   else {
     console.warn('No connection to which send the notification');
@@ -149,7 +153,7 @@ function checkTemperature(customerId) {
       console.log('Status: ', currentBoilerStatus, data.temperature.value,
                   desiredTemp);
 
-      if (data.temperature.value > desiredTemp) {
+      if (data.temperature.value >= desiredTemp) {
         newBoilerStatus = 'OF';
       }
       else {
@@ -158,7 +162,12 @@ function checkTemperature(customerId) {
 
       if (currentBoilerStatus !== newBoilerStatus) {
         console.log('Boiler Status must change');
-        updateBoilerStatus(customerId, newBoilerStatus).then(resolve, reject);
+        updateBoilerStatus(customerId, newBoilerStatus).then(function(updated) {
+          sendNotification(customerId, {
+            'newBoilerStatus': newBoilerStatus
+          });
+          resolve(updated);
+        }).catch(reject);
       }
       else {
         console.info('Boiler status not changed!!');
@@ -187,7 +196,7 @@ app.post('/on_context_change', function(req, resp) {
   console.log('on context change!!!');
   var ngsiData = OrionHelper.parse(req.body);
 
-  var customerId = ngsiData.id;
+  var customerId = ngsiData.id.split('-')[1];
   console.log('Customer Id: ', customerId);
 
   var newTemp = ngsiData.temperature;
@@ -202,7 +211,7 @@ app.post('/on_context_change', function(req, resp) {
       }
     });
 
-    checkTemperature(customerId.split('-')[1]).then(function() {
+    checkTemperature(customerId).then(function() {
       console.log('Temperature checked');
     }).catch(function(err) {
       console.error('Error while checking temperature: ', err);
@@ -225,8 +234,11 @@ app.ws('/ws_register', function(ws, req) {
   ws.on('message', function(msg, theWs) {
     console.log(msg);
     var msgData = JSON.parse(msg);
-     wsConnections['Customer-' + msgData.customerId] = ws;
-  }).bind(null, ws);
+
+    wsConnections[msgData.customerId] = wsConnections[msgData.customerId] || [];
+    wsConnections[msgData.customerId].push(ws);
+
+  }).bind(null, ws);  // TODO: Revise this code
 });
 
 function registerSubscription(forceCreate) {
@@ -248,9 +260,9 @@ function registerSubscription(forceCreate) {
 
     var options = {
       callback: 'http://130.206.83.68:9002/on_context_change',
-      attributes: ['temperature', 'boilerStatus'],
+      attributes: ['temperature'],
       // Every 20 seconds
-      throttling: 'PT20S'
+      throttling: 'PT15S'
     };
 
     if (subscriptionId && !forceCreate) {
@@ -284,7 +296,7 @@ function onSubscribed(subscriptionId) {
 }
 
 function onSubscribedError(err) {
-  if (err && err.code === 404) {
+  if (err && err.code == 404) {
     console.warn('Cannot update existing subscription');
     registerSubscription(true).then(onSubscribed);
     return;
