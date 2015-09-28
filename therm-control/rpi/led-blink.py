@@ -1,4 +1,24 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+    FIWARE Examples
+    
+   This programme exports a server which is able to control a LED
+   connected to a Raspberry PI 
+
+   The server listens to a UNIX Socket called 'led-blink-control' 
+
+   The server accepts a series of commands, namely:
+
+   - ON --> Switches on the LED and makes it blink forever
+   - OF --> Switches off the LED and stops any ongoing blinking
+   - PG --> Pings the server
+   - GB --> Ends the session
+   - KO --> Kills the server
+
+   Author: José Manuel Cantera (Telefónica I+D)
+"""
 
 import sys, traceback, time, led, socket, os, threading
 
@@ -28,6 +48,7 @@ def sleep():
     sleep_time = float(sys.argv[1])
   time.sleep(sleep_time)
 
+# The logic to process the commands
 def controller():
   current_status = 'OFF'
   sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -38,7 +59,7 @@ def controller():
   except:
     print >>sys.stderr, 'another process is listening!!'
     sys.exit()
-
+  
   while True:
     # Wait for a connection
     print >>sys.stderr, 'waiting for a connection'
@@ -49,10 +70,11 @@ def controller():
         print >>sys.stderr, 'received "%s"' % data
         # Blink ON
         if data == 'ON':
-          print 'blinking on'
-          blink_thread = StoppableThread(ptarget=blink)
-          blink_thread.start()
-          current_status = 'ON'
+          if current_status == 'OFF':
+            print 'blinking on'
+            blink_thread = StoppableThread(ptarget=blink)
+            blink_thread.start()
+            current_status = 'ON'
         # Blink OFF
         elif data == 'OF':
           if blink_thread != None:
@@ -81,6 +103,7 @@ def controller():
         # Clean up the connection
         connection.close()
 
+# Implements the blinking process (will be bound to a thread)
 def blink():
   try:
     while True:
@@ -111,6 +134,7 @@ def startup():
   t.start()
   t.join()
 
+# Server is restarted if already running
 try:
   client_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
   client_sock.connect(server_address)

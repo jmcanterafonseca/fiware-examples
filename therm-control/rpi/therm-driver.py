@@ -1,4 +1,23 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+FIWARE Examples
+
+This is a therm driver which reads temperature data provided by a
+DS18B20 digital temperature sensor connected to a Raspberry Pi 
+
+The output of the therm driver is a line like 
+
+28-0000056a1cc2 t=23.187000
+
+First field is the serial number of the sensor and second field the temperature
+
+Data is provided in intervals of 5 seconds by default. An optional argument can be provided
+indicating the time which ellapses between two measurements
+
+Author: José Manuel Cantera (Telefónica I+D)
+"""
 
 import sys, glob, time
 
@@ -16,6 +35,8 @@ def read_temp_raw():
   f.close()
   return lines
 
+# Algorithm for reading the temp is described on
+# Raspberry PI Cookbook
 def read_temp():
   lines = read_temp_raw()
   while lines[0].strip()[-3:] != 'YES':

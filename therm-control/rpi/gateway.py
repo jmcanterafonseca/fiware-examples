@@ -1,13 +1,32 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+  FIWARE Examples
+
+  This module implements a simple gateway which sends data to 
+  a FIWARE IoT Agent by means of HTTP POST Requests. 
+
+  The gateway expects input in the form of lines of text
+  with a line containing a sensor id and a measurement. Input is taken
+  from the stdin
+  
+  First parameter is the end point of the IoT Agent to be used
+
+ Author: José Manuel Cantera (Telefónica I+D)
+"""
+
 
 import sys, httplib, json
 
-default_agent_url = '192.168.242.47:9001'
+# IoT Agent end point
+default_agent_url = '130.206.83.68:9003'
 
 def post_data(agent_url, sensor_id, measurement):
   headers = { "Content-type": "application/json" }
   data = { 'sensorId': sensor_id, 'data': measurement }
 
+  print json.dumps(data)
   conn = httplib.HTTPConnection(agent_url)
 
   conn.request("POST", "/measure", body=json.dumps(data), headers=headers)
