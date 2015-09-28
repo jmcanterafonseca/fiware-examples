@@ -1,14 +1,36 @@
 'use strict';
 
+/*
+ *  FIWARE Examples
+ *  
+ *  Custom IoT Agent for the Therm Controller Example 
+ *
+ *  Measurements can be provided from a Gateway through
+ *  HTTP POST Requests or through Web Sockets
+ *
+ *  This IoT Agent can play the role of context provider in order
+ *  to interact with an actuator (a boiler simulated by a LED on a Raspberry Pi)
+ *
+ *  This example is provided to understand what an IoT Agent is
+ *  and different architectural alternatives to implement them
+ *
+ *  Author: José Manuel Cantera Fonseca (Telefónica I+D)
+ *
+ */
+
+const PORT = 9003;    // Port on which the IoT Agent will be listening to
+
+const ORION_URL = 'http://130.206.83.68:1026/v1';
+const SERVER_ADDRESS = '130.206.83.68';     // Needed for providing data
+
 var URL = require('url');
 var fs = require('fs');
 
 var Orion = require('fiware-orion-client');
 var OrionClient = new Orion.Client({
-  url: 'http://130.206.83.68:1026/v1'
+  url: ORION_URL
 });
 var OrionHelper = Orion.NgsiHelper;
-var XmlBuilder = Orion.XmlBuilder;
 
 var loggerStream = fs.createWriteStream('./log.txt', {
   flags: 'a',
@@ -26,9 +48,7 @@ app.use(morgan('dev',{
   stream: loggerStream
 }));
 
-app.use(bodyParser.text({
-  type: 'application/xml'
-}));
+app.use(bodyParser.json());
 
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
   extended: true
@@ -36,7 +56,7 @@ app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
 
 var expressWs = require('express-ws')(app);
 
-
+// Mapping between a device and a Customer
 var sensorDesc = {
   '28-0000056a1cc2' : {
     type: 'House',
@@ -45,6 +65,7 @@ var sensorDesc = {
   }
 };
 
+// Mapping between a customer and her devices
 var customerConfig = {
   'Customer-6790' : {
     sensors: [
@@ -67,6 +88,7 @@ var customerConfig = {
   }
 };
 
+// Updates Customer entity and its corresponding measurements
 function updateContext(msg) {
   var sensorId = msg.sensorId;
   var data = msg.data;
@@ -74,7 +96,6 @@ function updateContext(msg) {
   var dataComps = data.split('=');
   var magnitude = dataComps[0];
   var value = Number(dataComps[1]);
-  console.log('Variable: ', magnitude);
 
   var entityData = sensorDesc[sensorId];
 
@@ -82,18 +103,19 @@ function updateContext(msg) {
     type: entityData.type,
     id: entityData.id
   };
-  contextData[entityData[magnitude]] = new Orion.Attribute(value, {
+  contextData[entityData[magnitude]] = new Orion.Attribute(value, null, {
     timestamp: new Date()
   });
 
   return OrionClient.updateContext(contextData);
 }
 
+// This is one mechanism for receiving measurements from the gateway
 app.post('/measure', function(req, resp) {
   console.log('Post is here!', req.body.sensorId);
 
   updateContext(req.body).then(function(result) {
-    console.log('Context data updated!!!');
+    console.log('Context data updated with measurements!!!');
   }).catch(function(err) {
       console.error('Error while updating context: ', err);
   });
@@ -105,20 +127,27 @@ app.post('/measure', function(req, resp) {
 app.post('/ngsi10/boiler/:operation', function(req, resp) {
   var operation = req.params.operation;
 
+  // Update context operations correspond to changing the boiler status
   if (operation === 'updateContext') {
-    console.log('Update Context!!!: ', req.body);
+    console.log('Update Context!!!: ', JSON.stringify(req.body));
+    
+    var data = OrionHelper.parseNgsiRequest(req.body);
+    console.log('Data for updating context: ', JSON.stringify(data));
+    
+    var customerId = data.entities[0].id;
+    var newStatus = data.entities[0].boilerStatus;
 
-    var data = OrionHelper.parse(req.body);
-    var customerId = data.id;
-    var newStatus = data.boilerStatus;
-
-    var response = new XmlBuilder('updateContextResponse');
-    var responseData = data;
+    var responseData = {
+      id: customerId,
+      type: data.entities[0].type,
+      boilerStatus: newStatus
+    };
+    
     if (newStatus) {
       var boilerId = customerConfig[customerId].actuators.boiler.id;
       var connection = customerConfig[customerId].connection;
 
-      connection.send(JSON.stringify({
+      connection && connection.send(JSON.stringify({
         type: 'command',
         command: 'setStatus',
         actuatorId: boilerId,
@@ -129,19 +158,21 @@ app.post('/ngsi10/boiler/:operation', function(req, resp) {
       console.warn('New status not found. Doing nothing');
     }
 
-    response.child(OrionHelper.buildNgsiResponse(responseData).toXMLTree());
-    var payload = response.build(true);
-    resp.send(payload);
+    var response = OrionHelper.buildNgsiResponse(responseData);
+    resp.json(response);
   }
+  // Query context operations correspond to obtaining boiler status
   else if (operation === 'queryContext') {
-    console.log(req.body);
+    console.log('Query Context:', JSON.stringify(req.body));
     var ngsiRequest = OrionHelper.parseNgsiRequest(req.body);
     var customerId = ngsiRequest.entities[0].id;
     console.log('Query Customer Id: ', customerId);
-
+    
     var connection = customerConfig[customerId].connection;
 
     var msgCallback = function(msg) {
+      console.log('Message Response received!!! ', msg);
+      
       var msgData = JSON.parse(msg);
 
       if (msgData.type === 'commandResponse') {
@@ -151,11 +182,7 @@ app.post('/ngsi10/boiler/:operation', function(req, resp) {
           boilerStatus: msgData.data
         };
 
-        var response = new XmlBuilder('queryContextResponse');
-        response.child(OrionHelper.buildNgsiResponse(responseData).toXMLTree());
-        var payload = response.build(true);
-
-        resp.send(payload);
+        resp.json(OrionHelper.buildNgsiResponse(responseData));
       }
 
       connection.removeListener('message', msgCallback);
@@ -179,10 +206,10 @@ app.post('/ngsi10/boiler/:operation', function(req, resp) {
   }
 });
 
-
+// Web socket connection to the gateway (alternative to POST)
 app.ws('/ws_measure', function(ws, req) {
   console.log('Measure!');
-
+  
   ws.on('message', function(msg) {
     console.log('Msg: ', msg);
     var dataMsg = JSON.parse(msg);
@@ -201,6 +228,7 @@ app.ws('/ws_measure', function(ws, req) {
   });
 });
 
+// Provider registration for the 'boilerStatus' attribute
 function registerProvider(forceCreate) {
   return new Promise(function (resolve, reject) {
     var FILE_REGISTRATION = 'registration.id';
@@ -220,7 +248,7 @@ function registerProvider(forceCreate) {
     };
 
     var options = {
-      callback: 'http://130.206.83.68:9003/ngsi10/boiler'
+      callback: 'http://' + SERVER_ADDRESS + ':' + PORT + '/ngsi10/boiler'
     };
 
     if (registrationId && !forceCreate) {
@@ -249,8 +277,8 @@ function registerProvider(forceCreate) {
 
 function onRegistered(registrationId) {
   console.log('Context provider properly registered: ', registrationId);
-  console.log('IOT Agent up and running');
-  app.listen(9003);
+  console.log('IOT Agent up and running on port: ', PORT);
+  app.listen(PORT);
 }
 
 function onRegisteredError(err) {
@@ -262,7 +290,6 @@ function onRegisteredError(err) {
   console.error('Cannot subscribe to context changes: ', err);
 }
 
+// Entry point, once registration happens the server starts listening
 registerProvider().then(onRegistered).
             catch(onRegisteredError).catch(onRegisteredError);
-
-
