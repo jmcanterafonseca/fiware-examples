@@ -5,9 +5,9 @@ Uses Google Charts.
 
 It contains the following subdirectories:
 
-+ public which contains the JS and style content
-+ views which contains the view that displays the temperature charts
-+ server.js which implements the front-end server using Express
++ `public` which contains the JS and style content
++ `views` which contains the view that displays the temperature charts
++ `server.js` which implements the front-end server using Express
 
 The Web App implements the following behavior:
 
@@ -28,7 +28,7 @@ node --harmony server.js
 
 Point a browser to `http://<SERVER>/my_house/6790`
 
-(The example assumes that the customer number which temperature is being managed is 6790)
+(The example assumes that the customer number which temperature is being managed is `6790`)
 
 ### Configuration
 

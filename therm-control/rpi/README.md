@@ -39,11 +39,11 @@ The server listens to a UNIX Socket called 'led-blink-control'
 
 The server accepts a series of commands, namely:
 
-- ON --> Switches on the LED and makes it blink forever
-- OF --> Switches off the LED and stops any ongoing blinking
-- PG --> Pings the server
-- GB --> Ends the session
-- KO --> Kills the server
+- `ON` --> Switches on the LED and makes it blink forever
+- `OF` --> Switches off the LED and stops any ongoing blinking
+- `PG` --> Pings the server
+- `GB` --> Ends the session
+- `KO` --> Kills the server
 
 ## How to run
 

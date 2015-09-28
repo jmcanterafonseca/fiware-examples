@@ -1,21 +1,25 @@
 ## IoT Agent for the Therm Controller Example
 
-Here you can find a simple IoT Agent which gets the data from the gateway and
+Here you can find a simple *IoT Agent* which gets the data from the gateway and
 transforms it to update context data in Orion.
 
 The IoT Agent receives measurements from the gateway and updates context conveniently.
-It also registers as a Context Provider in order to interact with actuators managed by the gateway. 
+It also registers as a Context Provider in order to interact with actuators managed by the gateway.
+
+The main interest of thos IoT Agent is that it is capable of receiving measurements by means of the
+Web Socket protocol and it can reuse the same connection to send commands to the Actuator. 
 
 Please take into account that FIWARE provides many IoT Agents off-the-shelf.
-This IoT Agent is here for learning purposes and in production you should consider using those
-already provided by FIWARE.
+*This IoT Agent is here for learning / experimentation purposes and in production you should consider using those
+already provided by FIWARE*.
 
 ### How to run
 
 Use Node.js >= 0.12
 
+```
 node --harmony iot-agent.js
-
+```
 
 ### Configuration
 
