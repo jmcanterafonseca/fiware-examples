@@ -1,12 +1,33 @@
 'use strict';
 
+/*
+ *   FIWARE Examples
+ *
+ *   Implements the server front-end logic for the therm controller example
+ *
+ *   This server
+ *
+ *      - receives requests from the Web Browser to serve UI pages
+ *      - obtains data by querying the Orion Context Broker
+ *      - subscribes to changes in the corresponding entities
+ *      - notifies the Web page of changes through a WebSocket
+ *      - performs the temperature control by switching on the boiler actuator
+ *
+ *   Author: José Manuel Cantera (Telefónica I+D)
+ *
+ */
+
+const PORT = 9002;        // Port on which the server will listen to
+const ORION_URL = 'http://130.206.83.68:1026/v1';
+const SERVER_ADDRESS = '130.206.83.68';     // Needed for subscriptions
+
 var URL = require('url');
 var QueryString = require('querystring');
 var fs = require('fs');
 
 var Orion = require('fiware-orion-client');
 var OrionClient = new Orion.Client({
-  url: 'http://130.206.83.68:1026/v1'
+  url: ORION_URL
 });
 var OrionHelper = Orion.NgsiHelper;
 
@@ -36,7 +57,7 @@ app.use(morgan('dev',{
 app.use(express.static(__dirname + '/public'));
 
 // Temporal hack, TODO: set this to a relative path
-app.set('views', '/home/jmcf/hack4good/views');
+app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
 
 // Support Web Sockets
@@ -45,8 +66,10 @@ var expressWs = require('express-ws')(app);
 // It will store WS connections per client
 var wsConnections = Object.create(null);
 
+// To load the initial UI this resource is called
 app.get('/my_house/:customerId', function(req, resp) {
   console.log('Request has come to my_house');
+  // Query Context to obtain customer data
   OrionClient.queryContext({
     id: 'Customer' + '-' + req.params.customerId,
     type: 'House'
@@ -56,7 +79,8 @@ app.get('/my_house/:customerId', function(req, resp) {
       console.warn('No data found!!!');
       data = Object.create(null);
     }
-
+    
+    // Three data items are used by the page rendering
     resp.render('my_house', {
       'currentTemp': data.temperature || { value: Number.NEGATIVE_INFINITY },
       'desiredTemp': data.desiredTemperature || 22,
@@ -68,6 +92,7 @@ app.get('/my_house/:customerId', function(req, resp) {
   });
 });
 
+// When a new desired temperature is set this method is invoked
 app.post('/my_house/:customerId/set_temperature', function(req, resp) {
   var customerId = req.params.customerId;
   var entity = {
@@ -90,6 +115,7 @@ app.post('/my_house/:customerId/set_temperature', function(req, resp) {
   });
 });
 
+// This resource allows to toggle the status of the boiler
 app.post('/my_house/:customerId/toggle_boiler', function(req, resp) {
   var customerId = req.params.customerId;
   OrionClient.queryContext({
@@ -110,6 +136,7 @@ app.post('/my_house/:customerId/toggle_boiler', function(req, resp) {
   });
 });
 
+// Sends a notification to the Web page through Web sockets
 function sendNotification(customerId, data) {
   var connections = wsConnections[customerId];
   if (Array.isArray(connections)) {
@@ -128,6 +155,7 @@ function sendNotification(customerId, data) {
   }
 }
 
+// Checks temperature and sets a new state for the boiler
 function checkTemperature(customerId) {
   return new Promise(function(resolve, reject) {
     var entity = {
@@ -138,6 +166,8 @@ function checkTemperature(customerId) {
     var currentBoilerStatus, newBoilerStatus;
 
     OrionClient.queryContext(entity).then(function(data) {
+      console.log('Data from the customer: ', JSON.stringify(data));
+      
       if (!data) {
         console.warn('Cannot query data of customer: ', customerId);
         resolve();
@@ -191,7 +221,7 @@ function updateBoilerStatus(customerId, newStatus) {
   });
 }
 
-// Invoked when a change in context happens
+// Invoked when a change in context happens (a notification is received)
 app.post('/on_context_change', function(req, resp) {
   console.log('on context change!!!');
   var ngsiData = OrionHelper.parse(req.body);
@@ -241,6 +271,7 @@ app.ws('/ws_register', function(ws, req) {
   }).bind(null, ws);  // TODO: Revise this code
 });
 
+// Subscribes to context changes creating or renewing a subscription
 function registerSubscription(forceCreate) {
   return new Promise(function (resolve, reject) {
     var FILE_SUBSCRIPTION = 'subscription.id';
@@ -259,7 +290,7 @@ function registerSubscription(forceCreate) {
     };
 
     var options = {
-      callback: 'http://130.206.83.68:9002/on_context_change',
+      callback: 'http://' + SERVER_ADDRESS + ':' + PORT + '/on_context_change',
       attributes: ['temperature'],
       // Every 20 seconds
       throttling: 'PT15S'
@@ -291,8 +322,8 @@ function registerSubscription(forceCreate) {
 
 function onSubscribed(subscriptionId) {
   console.log('Subscribed to context changes: ', subscriptionId);
-  console.log('App Web Server up and running');
-  app.listen(9002);
+  console.log('App Web Server up and running on port: ', PORT);
+  app.listen(PORT);
 }
 
 function onSubscribedError(err) {
@@ -304,6 +335,7 @@ function onSubscribedError(err) {
   console.error('Cannot subscribe to context changes: ', err);
 }
 
+// Subscribe and then starts the server
 registerSubscription().then(onSubscribed).
             catch(onSubscribedError).catch(onSubscribedError);
 
