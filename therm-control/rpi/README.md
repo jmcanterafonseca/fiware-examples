@@ -25,11 +25,11 @@ indicating the time which ellapses between two measurements
 
 ### gateway-ws.py
 
-The gateway opens a Web Socket connection to the IoT Agent in order to send measurements
+The gateway opens a `Web Socket` connection to the IoT Agent in order to send measurements
 The gateway is capable as well to receive messages (commands) in order to
-obtain or toggle the status of an actuator (boiler)
+obtain or toggle the status of an actuator (boiler).
 
-As it happens with the HTTP POST gateway it receives measurements as lines of text received under the stdin
+As it happens with the HTTP POST gateway it receives measurements as lines of text received under the `stdin`
 
 ### led-blink.py
 
